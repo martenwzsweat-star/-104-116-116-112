@@ -1,0 +1,258 @@
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+
+local Window = library.CreateLib("Firetouch System", "DarkTheme")
+
+-- Key System Variables
+local correctKey = "C0MPAS"  -- Change this to your desired key
+local isUnlocked = false
+
+-- Key Check Function
+local function CheckKey(inputKey)
+    if inputKey == correctKey then
+        isUnlocked = true
+        return true
+    else
+        return false
+    end
+end
+
+-- Create Key Tab first
+local KeyTab = Window:NewTab("🔑 Key System")
+local KeySection = KeyTab:NewSection("Enter Key")
+
+KeySection:NewTextBox("Enter Key", "Enter your key here", function(key)
+    if CheckKey(key) then
+        library:CreateNotification({
+            Title = "✅ SUCCESS",
+            Content = "Key accepted! System unlocked.",
+            Duration = 3
+        })
+        -- Show main tab
+        InitMainSystem()
+    else
+        library:CreateNotification({
+            Title = "❌ ERROR",
+            Content = "Invalid key!",
+            Duration = 3
+        })
+    end
+end)
+
+KeySection:NewButton("Test Key: FIRE2024", "Test the default key", function()
+    if CheckKey("FIRE2024") then
+        library:CreateNotification({
+            Title = "✅ SUCCESS",
+            Content = "Key accepted! System unlocked.",
+            Duration = 3
+        })
+        InitMainSystem()
+    end
+end)
+
+KeySection:NewLabel("Key: FIRE2024")
+KeySection:NewLabel("System will unlock after correct key")
+
+-- Main System (hidden until unlocked)
+local MainTab, section
+local isMainInitialized = false
+
+function InitMainSystem()
+    if isMainInitialized then return end
+    isMainInitialized = true
+    
+    MainTab = Window:NewTab("Main")
+    section = MainTab:NewSection("Reach")
+
+    -- Fast services
+    local player = game.Players.LocalPlayer
+    local workspace = game:GetService("Workspace")
+    local runService = game:GetService("RunService")
+    local userInputService = game:GetService("UserInputService")
+    local mouse = player:GetMouse()
+
+    -- Variables
+    local character = player.Character or player.CharacterAdded:Wait()
+    local maxReachDistance = 50
+    local allBalls = {}
+    local ballsInRange = {}
+    local lastScanTime = 0
+    local scanInterval = 0.01
+    local isAutoTouch = false
+    local touchDuration = 1.3 -- 1.3 second touch duration
+    local activeTouches = {} -- Track ongoing touches
+
+    -- Ultra-fast ball scanner
+    local function FastScanBalls()
+        local tempBalls = {}
+        local workspaceChildren = workspace:GetChildren()
+        
+        for i = 1, #workspaceChildren do
+            local obj = workspaceChildren[i]
+            if obj:IsA("BasePart") and (obj.Name == "Ball" or obj.Name:lower():find("ball")) then
+                tempBalls[#tempBalls + 1] = obj
+            end
+        end
+        
+        allBalls = tempBalls
+    end
+
+    -- Ultra-fast range check
+    local function FastRangeCheck()
+        if not character then return {} end
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return {} end
+        
+        local characterPos = humanoidRootPart.Position
+        local tempInRange = {}
+        local reachSquared = maxReachDistance * maxReachDistance
+        
+        for i = 1, #allBalls do
+            local ball = allBalls[i]
+            if ball and ball.Parent then
+                local ballPos = ball.Position
+                local dx = characterPos.X - ballPos.X
+                local dy = characterPos.Y - ballPos.Y
+                local dz = characterPos.Z - ballPos.Z
+                local distanceSquared = dx*dx + dy*dy + dz*dz
+                
+                if distanceSquared <= reachSquared then
+                    tempInRange[#tempInRange + 1] = ball
+                end
+            end
+        end
+        
+        ballsInRange = tempInRange
+    end
+
+    -- Start touch with 1.3 second duration
+    local function StartTouchWithDuration(armPart, ball)
+        if not armPart or not ball then return end
+        
+        local touchId = armPart.Name .. "_" .. ball.Name
+        activeTouches[touchId] = tick()
+        
+        -- Start touch
+        firetouchinterest(armPart, ball, 0)
+        
+        -- Schedule end touch after 1.3 seconds
+        task.delay(touchDuration, function()
+            if activeTouches[touchId] then
+                firetouchinterest(armPart, ball, 1)
+                activeTouches[touchId] = nil
+            end
+        end)
+    end
+
+    -- Touch all balls with 1.3 second duration
+    local function TouchAllWithDuration()
+        if not character then return end
+        
+        local leftArm = character:FindFirstChild("Left Arm")
+        local rightArm = character:FindFirstChild("Right Arm")
+        if not leftArm or not rightArm then return end
+        
+        -- Touch each ball with both arms
+        for i = 1, #ballsInRange do
+            local ball = ballsInRange[i]
+            if ball then
+                StartTouchWithDuration(leftArm, ball)
+                StartTouchWithDuration(rightArm, ball)
+            end
+        end
+    end
+
+    -- Cancel all ongoing touches
+    local function CancelAllTouches()
+        for touchId, _ in pairs(activeTouches) do
+            activeTouches[touchId] = nil
+        end
+    end
+
+    -- UI Controls
+    section:NewSlider("Reach Distance", "Maximum touch distance", 100, 5, function(s)
+        maxReachDistance = s
+    end)
+
+    section:NewSlider("Touch Duration", "Touch duration in seconds", 3, 0.1, function(s)
+        touchDuration = s
+        CancelAllTouches()
+    end)
+
+    section:NewToggle("Auto Touch", "Auto touch balls in range", function(state)
+        isAutoTouch = state
+        if not state then
+            CancelAllTouches()
+        end
+    end)
+
+    section:NewButton("Cancel All Touches", "Stop all ongoing touches", function()
+        CancelAllTouches()
+    end)
+
+    -- Ultra-fast scan loop
+    runService.Heartbeat:Connect(function()
+        local currentTime = tick()
+        
+        if currentTime - lastScanTime > scanInterval then
+            FastScanBalls()
+            FastRangeCheck()
+            lastScanTime = currentTime
+        end
+        
+        if isAutoTouch and #ballsInRange > 0 then
+            TouchAllWithDuration()
+        end
+    end)
+
+    -- Fast triggers (with duration)
+    mouse.Button2Down:Connect(function()
+        TouchAllWithDuration()
+    end)
+
+    userInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.F or 
+           input.KeyCode == Enum.KeyCode.R or 
+           input.KeyCode == Enum.KeyCode.X then
+            TouchAllWithDuration()
+        end
+    end)
+
+    -- Fast ball monitoring
+    workspace.ChildAdded:Connect(function(child)
+        if child:IsA("BasePart") and (child.Name == "Ball" or child.Name:lower():find("ball")) then
+            allBalls[#allBalls + 1] = child
+        end
+    end)
+
+    workspace.ChildRemoved:Connect(function(child)
+        for i = 1, #allBalls do
+            if allBalls[i] == child then
+                table.remove(allBalls, i)
+                break
+            end
+        end
+    end)
+
+    -- Character monitoring
+    player.CharacterAdded:Connect(function(newChar)
+        character = newChar
+        CancelAllTouches()
+    end)
+
+    -- Initial fast scan
+    FastScanBalls()
+    FastRangeCheck()
+
+    -- Create credits tab
+    local NewTab = Window:NewTab("Credits")
+    local credits = NewTab:NewSection("Special Thanks")
+    credits:NewLabel("UI Library by xHeptc")
+    credits:NewLabel("Script Helper by hookfunction(thegoat)")
+    
+    -- Remove key tab after successful unlock
+    Window:RemoveTab(KeyTab)
+end
+
+-- Auto-unlock for testing (remove this in final version)
+-- CheckKey("FIRE2024")  -- Uncomment to auto-unlock
+-- if isUnlocked then InitMainSystem() end
